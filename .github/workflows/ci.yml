@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Deterministic scenario
+        run: python3 tools/sim_health_monitor.py
+      - name: Python compilation
+        run: >-
+          python3 -m py_compile
+          oomwoo_health_monitor/*.py
+          tools/sim_health_monitor.py
+
+  ros-jazzy:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install colcon
+        run: |
+          apt-get update
+          apt-get install -y python3-colcon-common-extensions
+      - name: Build package
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --packages-select oomwoo_health_monitor
+      - name: Verify installed contract docs
+        run: >-
+          test -f
+          install/oomwoo_health_monitor/share/oomwoo_health_monitor/docs/stack_watchdog_contract.md
