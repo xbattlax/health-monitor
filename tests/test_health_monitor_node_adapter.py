@@ -281,6 +281,91 @@ class HealthMonitorNodeAdapterTest(unittest.TestCase):
         stack = json.loads(node.publishers["oomwoo/health/stack"].messages[-1].data)
         self.assertEqual(stack["state"], "no_roster")
 
+    def test_frozen_clock_withholds_heartbeat_and_requires_rearming(self):
+        from oomwoo_health_monitor.health_monitor_node import HealthMonitorNode
+
+        node = HealthMonitorNode()
+        node.clock_sec = 10.0
+        node._roster_cb(_String(data=json.dumps({
+            "task_id": "cleaning_job",
+            "components": [{"component_id": "nav2", "max_age_sec": 2.0}],
+        })))
+        node._component_cb(_String(data=json.dumps({
+            "component_id": "nav2", "health": "ok", "stamp_sec": 10.0,
+        })))
+        node._timer_cb()
+        node.clock_sec = 10.3
+        node._timer_cb()
+        heartbeats = node.publishers["oomwoo/health/mcu_heartbeat"].messages
+        self.assertEqual(len(heartbeats), 1)
+
+        node._timer_cb()
+        self.assertEqual(len(heartbeats), 1)
+        stack = json.loads(node.publishers["oomwoo/health/stack"].messages[-1].data)
+        self.assertEqual(stack["state"], "clock_stalled")
+        self.assertFalse(stack["emit_mcu_heartbeat"])
+
+        node.clock_sec = 10.4
+        node._timer_cb()
+        self.assertEqual(len(heartbeats), 1)
+        node.clock_sec = 10.7
+        node._timer_cb()
+        self.assertEqual(len(heartbeats), 2)
+
+    def test_work_path_stall_faults_but_timer_only_heartbeat_masks_it(self):
+        from oomwoo_health_monitor.health_monitor_node import HealthMonitorNode
+
+        node = HealthMonitorNode()
+        node.clock_sec = 20.0
+        node._roster_cb(_String(data=json.dumps({
+            "task_id": "cleaning_job",
+            "components": [{"component_id": "nav2", "max_age_sec": 0.5}],
+        })))
+        node._component_cb(_String(data=json.dumps({
+            "component_id": "nav2", "health": "ok", "stamp_sec": 20.0,
+        })))
+        node._timer_cb()
+        node.clock_sec = 20.3
+        node._timer_cb()
+        node.clock_sec = 20.6
+        node._timer_cb()
+        self.assertEqual(len(node.publishers["oomwoo/health/mcu_heartbeat"].messages), 1)
+        stack = json.loads(node.publishers["oomwoo/health/stack"].messages[-1].data)
+        self.assertEqual(stack["stale_critical"], ["nav2"])
+
+        # A timer that stamps fresh heartbeats without doing work violates the producer contract.
+        node._component_cb(_String(data=json.dumps({
+            "component_id": "nav2", "health": "ok", "stamp_sec": 20.6,
+        })))
+        node.clock_sec = 20.7
+        node._timer_cb()
+        self.assertEqual(len(node.publishers["oomwoo/health/mcu_heartbeat"].messages), 1)
+        node.clock_sec = 21.0
+        node._timer_cb()
+        self.assertEqual(len(node.publishers["oomwoo/health/mcu_heartbeat"].messages), 2)
+
+    def test_backward_clock_jump_withholds_heartbeat(self):
+        from oomwoo_health_monitor.health_monitor_node import HealthMonitorNode
+
+        node = HealthMonitorNode()
+        node.clock_sec = 10.0
+        node._roster_cb(_String(data=json.dumps({
+            "task_id": "cleaning_job",
+            "components": [{"component_id": "nav2", "max_age_sec": 2.0}],
+        })))
+        node._component_cb(_String(data=json.dumps({
+            "component_id": "nav2", "health": "ok", "stamp_sec": 10.0,
+        })))
+        node._timer_cb()
+        node.clock_sec = 10.3
+        node._timer_cb()
+
+        node.clock_sec = 9.0
+        node._timer_cb()
+        stack = json.loads(node.publishers["oomwoo/health/stack"].messages[-1].data)
+        self.assertEqual(stack["state"], "clock_stalled")
+        self.assertEqual(len(node.publishers["oomwoo/health/mcu_heartbeat"].messages), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

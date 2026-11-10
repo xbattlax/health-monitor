@@ -104,6 +104,9 @@ class HealthAggregator:
     def update_heartbeat(self, heartbeat: ComponentHeartbeat):
         self._heartbeats[heartbeat.component_id] = heartbeat
 
+    def disarm(self):
+        self._healthy_since_sec = None
+
     def evaluate(self, now_sec: float) -> StackHealth:
         if self._roster is None:
             self._healthy_since_sec = None

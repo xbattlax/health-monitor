@@ -15,6 +15,7 @@ from oomwoo_health_monitor.core import (
     ComponentSpec,
     HealthAggregator,
     HealthRoster,
+    StackHealth,
 )
 
 
@@ -23,6 +24,7 @@ class HealthMonitorNode(Node):
         super().__init__("health_monitor")
         self._aggregator = HealthAggregator(arm_window_sec=0.25)
         self._heartbeat_sequence = 0
+        self._last_timer_clock_sec = None
 
         self._stack_pub = self.create_publisher(
             String,
@@ -63,7 +65,16 @@ class HealthMonitorNode(Node):
 
     def _timer_cb(self):
         now_sec = self._now_sec()
-        stack_health = self._aggregator.evaluate(now_sec)
+        if self._last_timer_clock_sec is not None and now_sec <= self._last_timer_clock_sec:
+            self._aggregator.disarm()
+            stack_health = StackHealth(
+                state="clock_stalled",
+                task_id=self._aggregator.roster.task_id if self._aggregator.roster else None,
+                emit_mcu_heartbeat=False,
+            )
+        else:
+            stack_health = self._aggregator.evaluate(now_sec)
+        self._last_timer_clock_sec = now_sec
         self._stack_pub.publish(String(data=stack_health.to_json()))
         if not stack_health.emit_mcu_heartbeat:
             return
