@@ -27,6 +27,11 @@ Rule: publish this from the work path, not from a free-running timer. Examples:
 - localization consumed a scan and produced a pose update
 - dock-cycle evaluated a fresh IR/dock state
 
+A timer can keep publishing fresh timestamps while the work loop is stalled.
+The monitor cannot distinguish those messages from genuine work progress, so
+producers must tie heartbeat emission to completed work. The adapter regression
+tests cover both a stopped work-path heartbeat and this contract violation.
+
 ### Clock contract
 
 `stamp_sec` MUST use the same ROS clock as the monitor. Producers should derive
@@ -40,6 +45,12 @@ When `use_sim_time=true`, both producer and monitor therefore follow `/clock`.
 Wall-clock timestamps must not be mixed with ROS/simulation timestamps. A
 heartbeat timestamp in the future relative to the monitor is treated as stale
 and withholds the MCU heartbeat.
+If a timer callback runs without ROS time advancing (or after a backward jump),
+the monitor reports `clock_stalled`, withholds the MCU heartbeat, and requires a
+new arming window once time advances again. If `/clock` is completely paused,
+ROS timers may not run at all; the MCU-side watchdog must independently stop on
+missing live heartbeats. Slow ROS simulation time is not equivalent to the
+MCU's own monotonic watchdog time.
 
 ## Roster
 
@@ -78,8 +89,8 @@ Topic:
 
 Temporary JSON fields:
 
-- `state`: `no_roster`, `arming`, `healthy`, `healthy_with_advisory_faults`, or
-  `fault`.
+- `state`: `no_roster`, `arming`, `healthy`, `healthy_with_advisory_faults`,
+  `fault`, or `clock_stalled`.
 - `task_id`: current roster task.
 - `emit_mcu_heartbeat`: whether the MCU-facing heartbeat should be emitted.
 - `missing_critical`, `stale_critical`, `unhealthy_critical`.
@@ -103,7 +114,9 @@ while `emit_mcu_heartbeat=true`.
 
 This topic is deliberately `VOLATILE` and `RELIABLE`. A late subscriber must
 wait for a new live heartbeat; replaying a latched, previously healthy heartbeat
-would weaken the deadman guarantee.
+would weaken the deadman guarantee. Its history depth is 1 so a stalled
+subscriber cannot drain a queue of old healthy beats. Component heartbeats use
+depth 10 because multiple components publish to that shared topic.
 
 Fail-safe rules:
 
