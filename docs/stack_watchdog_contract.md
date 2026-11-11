@@ -114,7 +114,9 @@ while `emit_mcu_heartbeat=true`.
 
 This topic is deliberately `VOLATILE` and `RELIABLE`. A late subscriber must
 wait for a new live heartbeat; replaying a latched, previously healthy heartbeat
-would weaken the deadman guarantee.
+would weaken the deadman guarantee. Its history depth is 1 so a stalled
+subscriber cannot drain a queue of old healthy beats. Component heartbeats use
+depth 10 because multiple components publish to that shared topic.
 
 Fail-safe rules:
 

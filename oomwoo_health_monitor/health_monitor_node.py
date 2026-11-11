@@ -34,7 +34,7 @@ class HealthMonitorNode(Node):
         self._mcu_pub = self.create_publisher(
             String,
             "oomwoo/health/mcu_heartbeat",
-            _live_heartbeat_qos(),
+            _live_heartbeat_qos(depth=1),
         )
 
         self.create_subscription(
@@ -102,10 +102,10 @@ def _latched_state_qos() -> QoSProfile:
     )
 
 
-def _live_heartbeat_qos() -> QoSProfile:
+def _live_heartbeat_qos(*, depth: int = 10) -> QoSProfile:
     return QoSProfile(
         history=HistoryPolicy.KEEP_LAST,
-        depth=10,
+        depth=depth,
         reliability=ReliabilityPolicy.RELIABLE,
         durability=DurabilityPolicy.VOLATILE,
     )

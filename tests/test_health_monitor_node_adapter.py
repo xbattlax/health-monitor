@@ -220,9 +220,14 @@ class HealthMonitorNodeAdapterTest(unittest.TestCase):
             component_subscription[3].durability,
             _DurabilityPolicy.VOLATILE,
         )
+        self.assertEqual(component_subscription[3].depth, 10)
         self.assertEqual(
             node.publishers["oomwoo/health/mcu_heartbeat"].qos.durability,
             _DurabilityPolicy.VOLATILE,
+        )
+        self.assertEqual(
+            node.publishers["oomwoo/health/mcu_heartbeat"].qos.depth,
+            1,
         )
 
     def test_stale_critical_component_stops_mcu_heartbeat(self):
